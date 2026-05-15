@@ -1,0 +1,22 @@
+Lineare Regression (abhaengige Variable: Kaufabsicht)
+Modell: Kaufabsicht ~ Vertrauenswuerdigkeit + Informationsqualitaet + Einstellung_UGC
+
+R2 = 0.318, adjustiertes R2 = 0.302
+F(3, 129) = 20.06, p = 0.0000
+
+Koeffizienten (nicht standardisiert)
+             Praediktor Schaetzung Std_Fehler    t_Wert       p_Wert
+1             Konstante -0.4712222 0.43631212 -1.080012 2.821521e-01
+2 Vertrauenswuerdigkeit  0.1540825 0.10563906  1.458575 1.471127e-01
+3 Informationsqualitaet  0.3012799 0.11109450  2.711924 7.601696e-03
+4       Einstellung_UGC  0.3694932 0.08159195  4.528550 1.335284e-05
+
+Koeffizienten (standardisiert)
+             Praediktor    Schaetzung Std_Fehler        t_Wert       p_Wert
+1             Konstante -5.447296e-16 0.07243007 -7.520767e-15 1.000000e+00
+2 Vertrauenswuerdigkeit  1.266386e-01 0.08682354  1.458575e+00 1.471127e-01
+3 Informationsqualitaet  2.298219e-01 0.08474494  2.711924e+00 7.601696e-03
+4       Einstellung_UGC  3.620349e-01 0.07994500  4.528550e+00 1.335284e-05
+
+Interpretation: Ein positiver Koeffizient bedeutet, dass hoehere Werte der jeweiligen Skala
+mit hoeherer Kaufabsicht einhergehen. p-Werte < 0.05 gelten als statistisch signifikant.

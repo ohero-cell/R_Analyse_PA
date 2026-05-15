@@ -1,0 +1,4 @@
+"Hypothese","Praediktor","Schaetzung","p_Wert"
+"H1","Vertrauenswuerdigkeit",0.154082456540505,0.147112737315334
+"H2","Einstellung_UGC",0.369493239892584,1.33528427733956e-05
+"H3","Informationsqualitaet",0.301279867687472,0.00760169585329215
