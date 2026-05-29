@@ -10,6 +10,7 @@ required_packages <- c(
 	"stringr",
 	"psych",
 	"lmtest",
+	"sandwich",
 	"readr",
 	"tibble"
 )
@@ -52,6 +53,7 @@ if (file.exists(file.path(script_dir, "analyse.R"))) {
 }
 input_path <- file.path(root_dir, "data", "12.05.2026.xlsx")
 output_dir <- file.path(root_dir, "Output")
+added_output_dir <- file.path(root_dir, "added Outputs")
 
 if (!file.exists(input_path)) {
 	stop("Eingabedatei nicht gefunden: ", input_path)
@@ -59,6 +61,10 @@ if (!file.exists(input_path)) {
 
 if (!dir.exists(output_dir)) {
 	dir.create(output_dir, recursive = TRUE)
+}
+
+if (!dir.exists(added_output_dir)) {
+	dir.create(added_output_dir, recursive = TRUE)
 }
 
 raw <- readxl::read_excel(input_path)
@@ -282,6 +288,30 @@ age_corr_table <- tibble::tibble(
 	p_Wert = c(age_attitude$p, age_purchase$p, age_instagram$p)
 )
 
+gender_source <- if ("D1" %in% names(data)) {
+	"D1"
+} else if ("Geschlecht" %in% names(data)) {
+	"Geschlecht"
+} else {
+	NA_character_
+}
+
+gender_purchase <- list(n = 0, r = NA_real_, p = NA_real_)
+gender_instagram <- list(n = 0, r = NA_real_, p = NA_real_)
+if (!is.na(gender_source)) {
+	data_gender <- data %>%
+		mutate(Geschlecht_num = readr::parse_number(as.character(.data[[gender_source]])))
+	gender_purchase <- safe_cor_test(data_gender, "Geschlecht_num", "purchase_intent")
+	gender_instagram <- safe_cor_test(data_gender, "Geschlecht_num", "Instagram_Nutzung")
+}
+
+gender_corr_table <- tibble::tibble(
+	Analyse = c("Geschlecht x Kaufabsicht", "Geschlecht x Instagram_Nutzung"),
+	n = c(gender_purchase$n, gender_instagram$n),
+	r = c(gender_purchase$r, gender_instagram$r),
+	p_Wert = c(gender_purchase$p, gender_instagram$p)
+)
+
 format_list <- function(x) {
 	if (length(x) == 0) {
 		return("keine")
@@ -321,6 +351,7 @@ get_corr_value <- function(mat, row_name, col_name) {
 }
 
 write.csv(age_corr_table, file.path(output_dir, "age_correlations.csv"), row.names = FALSE)
+write.csv(gender_corr_table, file.path(output_dir, "gender_correlations.csv"), row.names = FALSE)
 
 age_corr_plot_df <- age_corr_table %>%
 	filter(!is.na(r))
@@ -336,6 +367,26 @@ if (nrow(age_corr_plot_df) > 0) {
 	ggsave(
 		file.path(output_dir, "age_correlations.svg"),
 		age_corr_plot,
+		width = plot_width,
+		height = plot_height,
+		device = plot_device
+	)
+}
+
+gender_corr_plot_df <- gender_corr_table %>%
+	filter(!is.na(r))
+
+if (nrow(gender_corr_plot_df) > 0) {
+	gender_corr_plot <- ggplot(gender_corr_plot_df, aes(x = Analyse, y = r, fill = r)) +
+		geom_col() +
+		scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0) +
+		plot_theme +
+		labs(x = NULL, y = "r", fill = "r") +
+		theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+	ggsave(
+		file.path(output_dir, "gender_correlations.svg"),
+		gender_corr_plot,
 		width = plot_width,
 		height = plot_height,
 		device = plot_device
@@ -358,7 +409,7 @@ if (ncol(corr_input) >= 2) {
 	write.csv(corr_ext$p, file.path(output_dir, "correlations_extended_p_values.csv"))
 }
 
-plot_matrix_heatmap <- function(mat, file_name, title, value_format, fill_scale, fill_label) {
+plot_matrix_heatmap <- function(mat, file_name, title, value_format, fill_scale, fill_label, out_dir = output_dir) {
 	plot_df <- as.data.frame(as.table(mat)) %>%
 		rename(var1 = Var1, var2 = Var2, value = Freq)
 	p <- ggplot(plot_df, aes(x = var1, y = var2, fill = value)) +
@@ -369,7 +420,7 @@ plot_matrix_heatmap <- function(mat, file_name, title, value_format, fill_scale,
 		plot_theme +
 		theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title = element_blank())
 	ggsave(
-		file.path(output_dir, file_name),
+		file.path(out_dir, file_name),
 		p,
 		width = plot_width,
 		height = plot_height_tall,
@@ -681,13 +732,15 @@ cat("\nKoeffizienten (standardisiert)\n")
 print(coef_df_std)
 cat("\nInterpretation: Ein positiver Koeffizient bedeutet, dass hoehere Werte der jeweiligen Skala\n")
 cat("mit hoeherer Kaufabsicht einhergehen. p-Werte < 0.05 gelten als statistisch signifikant.\n")
-cat("\nZusatzanalysen (Tasks 1-11)\n")
+cat("\nZusatzanalysen (Tasks 1-13)\n")
 cat("1-3 Korrelationen Alter\n")
 print(age_corr_table)
+cat("4-5 Korrelationen Geschlecht\n")
+print(gender_corr_table)
 if (is.na(instagram_source)) {
 	cat("Hinweis: Keine Spalte mit 'instagram' gefunden; Instagram_Nutzung ist NA.\n")
 }
-cat("\n4 Korrelationsmatrix (erweitert)\n")
+cat("\n6 Korrelationsmatrix (erweitert)\n")
 if (!is.null(corr_ext)) {
 	print(round(corr_ext$r, 3))
 	cat("p-Werte\n")
@@ -695,22 +748,22 @@ if (!is.null(corr_ext)) {
 } else {
 	cat("Nicht berechnet (zu wenige Variablen).\n")
 }
-cat("\n5-6 Multikollinearitaet (Toleranzwerte)\n")
+cat("\n7-8 Multikollinearitaet (Toleranzwerte)\n")
 print(tolerance_table)
 cat("Kriterium: Toleranz < 0.01 = problematisch.\n")
-cat("\n7 Normalverteilung der Residuen (Shapiro-Wilk)\n")
+cat("\n9 Normalverteilung der Residuen (Shapiro-Wilk)\n")
 if (is.null(shapiro_res)) {
 	cat("Shapiro-Wilk nicht berechnet (n ausserhalb 3..5000).\n")
 } else {
 	cat(sprintf("W = %.3f, p = %.4f\n", shapiro_res$statistic, shapiro_res$p.value))
 }
-cat("\n8 Homoskedastizitaet (Breusch-Pagan)\n")
+cat("\n10 Homoskedastizitaet (Breusch-Pagan)\n")
 cat(sprintf("BP = %.2f, df = %d, p = %.4f\n", bp_res$statistic, as.integer(bp_res$parameter), bp_res$p.value))
-cat("\n9 Linearitaet (Residuen vs. Fitted)\n")
+cat("\n11 Linearitaet (Residuen vs. Fitted)\n")
 cat("Plot gespeichert: residuals_vs_fitted.svg\n")
-cat("\n10 Unabhaengigkeit der Residuen (Durbin-Watson)\n")
+cat("\n12 Unabhaengigkeit der Residuen (Durbin-Watson)\n")
 cat(sprintf("DW = %.3f, p = %.4f\n", dw_res$statistic, dw_res$p.value))
-cat("\n11 Ausreisser (Mahalanobis-Distanz)\n")
+cat("\n13 Ausreisser (Mahalanobis-Distanz)\n")
 if (!is.null(mahal_table)) {
 	cat(sprintf(
 		"Cutoff (p = 0.001, df = %d) = %.3f; Ausreisser = %d\n",
@@ -736,6 +789,8 @@ cat(sprintf(
 cat(paste0(format_cor_line("Alter x Einstellung_UGC", age_attitude), "\n"))
 cat(paste0(format_cor_line("Alter x Kaufabsicht", age_purchase), "\n"))
 cat(paste0(format_cor_line("Alter x Instagram_Nutzung", age_instagram), "\n"))
+cat(paste0(format_cor_line("Geschlecht x Kaufabsicht", gender_purchase), "\n"))
+cat(paste0(format_cor_line("Geschlecht x Instagram_Nutzung", gender_instagram), "\n"))
 if (is.null(shapiro_res)) {
 	cat("Normalitaet Residuen (Shapiro): nicht berechnet.\n")
 } else {
@@ -797,22 +852,24 @@ if (!is.na(age_instagram$r)) {
 	cat("Instagram-Nutzung konnte nicht ausgewertet werden.\n")
 }
 cat("Multikollinearitaet und Ausreisser sind unproblematisch; die Residuen zeigen jedoch Hinweise auf Abweichung von Normalverteilung und moegliche Autokorrelation.\n")
-cat("\nDokumentation Tasks 1-11 (Kurzbeschreibung)\n")
+cat("\nDokumentation Tasks 1-13 (Kurzbeschreibung)\n")
 cat("1 Alter x Einstellung: Zusammenhang Alter und Einstellung_UGC.\n")
 cat("2 Alter x Kaufabsicht: Zusammenhang Alter und Kaufabsicht.\n")
 cat("3 Alter x Instagram: Zusammenhang Alter und Instagram-Nutzung.\n")
-cat("4 Korrelationsmatrix: Uebersicht aller paarweisen Zusammenhaenge.\n")
-cat("5 Multikollinearitaet: Regression jedes Praediktors auf die anderen.\n")
-cat("6 Toleranz (1 - R2): Indikator fuer problematische Ueberschneidungen.\n")
-cat("7 Shapiro-Wilk: Normalverteilung der Residuen.\n")
-cat("8 Homoskedastizitaet: konstante Residuenstreuung.\n")
-cat("9 Linearitaet: Residuen vs. Fitted Plot.\n")
-cat("10 Durbin-Watson: Unabhaengigkeit der Residuen.\n")
-cat("11 Mahalanobis: multivariate Ausreisser.\n")
+cat("4 Geschlecht x Kaufabsicht: Zusammenhang Geschlecht und Kaufabsicht.\n")
+cat("5 Geschlecht x Instagram: Zusammenhang Geschlecht und Instagram-Nutzung.\n")
+cat("6 Korrelationsmatrix: Uebersicht aller paarweisen Zusammenhaenge.\n")
+cat("7 Multikollinearitaet: Regression jedes Praediktors auf die anderen.\n")
+cat("8 Toleranz (1 - R2): Indikator fuer problematische Ueberschneidungen.\n")
+cat("9 Shapiro-Wilk: Normalverteilung der Residuen.\n")
+cat("10 Homoskedastizitaet: konstante Residuenstreuung.\n")
+cat("11 Linearitaet: Residuen vs. Fitted Plot.\n")
+cat("12 Durbin-Watson: Unabhaengigkeit der Residuen.\n")
+cat("13 Mahalanobis: multivariate Ausreisser.\n")
 cat("\nVisualisierungen (Dateien)\n")
 cat("correlation_heatmap.svg; correlation_pvalues_heatmap.svg; correlation_extended_heatmap.svg (falls vorhanden); correlation_extended_pvalues_heatmap.svg (falls vorhanden)\n")
 cat("descriptives_means_sd.svg; reliability_alpha.svg; regression_coefficients_standardized.svg\n")
-cat("age_correlations.svg; multicollinearity_tolerance.svg; residuals_vs_fitted.svg; mahalanobis_distances.svg\n")
+cat("age_correlations.svg; gender_correlations.svg; multicollinearity_tolerance.svg; residuals_vs_fitted.svg; mahalanobis_distances.svg\n")
 cat("sample_sizes.svg; scale_means_by_gender.svg (falls vorhanden)\n")
 sink()
 
@@ -887,6 +944,660 @@ if ("D1" %in% names(data)) {
 		device = plot_device
 	)
 }
+
+fmt_num <- function(x, digits = 3) {
+	if (is.na(x)) {
+		return("NA")
+	}
+	formatC(x, digits = digits, format = "f")
+}
+
+fmt_p <- function(p) {
+	if (is.na(p)) {
+		return("NA")
+	}
+	formatC(p, digits = 4, format = "f")
+}
+
+cohen_d <- function(x, g) {
+	g <- droplevels(factor(g))
+	if (length(levels(g)) != 2) {
+		return(NA_real_)
+	}
+	x1 <- x[g == levels(g)[1]]
+	x2 <- x[g == levels(g)[2]]
+	if (length(x1) < 2 || length(x2) < 2) {
+		return(NA_real_)
+	}
+	s1 <- stats::sd(x1)
+	s2 <- stats::sd(x2)
+	sp <- sqrt(((length(x1) - 1) * s1^2 + (length(x2) - 1) * s2^2) / (length(x1) + length(x2) - 2))
+	(mean(x1) - mean(x2)) / sp
+}
+
+eta_sq <- function(aov_model) {
+	ss <- summary(aov_model)[[1]][["Sum Sq"]]
+	ss[1] / sum(ss)
+}
+
+pairwise_corr <- function(df, method = "spearman") {
+	vars <- names(df)
+	n <- length(vars)
+	r_mat <- matrix(NA_real_, nrow = n, ncol = n, dimnames = list(vars, vars))
+	p_mat <- matrix(NA_real_, nrow = n, ncol = n, dimnames = list(vars, vars))
+	for (i in seq_len(n)) {
+		for (j in seq_len(n)) {
+			if (i == j) {
+				r_mat[i, j] <- 1
+				p_mat[i, j] <- 0
+				next
+			}
+			sub <- df[, c(vars[i], vars[j])]
+			sub <- sub[complete.cases(sub), ]
+			if (nrow(sub) < 3) {
+				next
+			}
+			res <- suppressWarnings(stats::cor.test(sub[[1]], sub[[2]], method = method))
+			r_mat[i, j] <- unname(res$estimate)
+			p_mat[i, j] <- res$p.value
+		}
+	}
+	list(r = r_mat, p = p_mat)
+}
+
+mediation_boot <- function(df, treat, mediator, outcome, n_boot = 2000, seed = 123) {
+	vars <- c(treat, mediator, outcome)
+	use_df <- df[, vars]
+	use_df <- use_df[complete.cases(use_df), ]
+	if (nrow(use_df) < 30) {
+		return(NULL)
+	}
+	model_a <- lm(stats::as.formula(paste(mediator, "~", treat)), data = use_df)
+	model_b <- lm(stats::as.formula(paste(outcome, "~", mediator, "+", treat)), data = use_df)
+	model_c <- lm(stats::as.formula(paste(outcome, "~", treat)), data = use_df)
+	a <- coef(model_a)[treat]
+	b <- coef(model_b)[mediator]
+	c_prime <- coef(model_b)[treat]
+	c_total <- coef(model_c)[treat]
+	indirect <- a * b
+	sa <- summary(model_a)$coefficients[treat, "Std. Error"]
+	sb <- summary(model_b)$coefficients[mediator, "Std. Error"]
+	se_indirect <- sqrt(b^2 * sa^2 + a^2 * sb^2)
+	z_sobel <- indirect / se_indirect
+	p_sobel <- 2 * (1 - stats::pnorm(abs(z_sobel)))
+	set.seed(seed)
+	boot_vals <- numeric(n_boot)
+	for (i in seq_len(n_boot)) {
+		idx <- sample(seq_len(nrow(use_df)), replace = TRUE)
+		boot_df <- use_df[idx, ]
+		boot_a <- lm(stats::as.formula(paste(mediator, "~", treat)), data = boot_df)
+		boot_b <- lm(stats::as.formula(paste(outcome, "~", mediator, "+", treat)), data = boot_df)
+		boot_vals[i] <- coef(boot_a)[treat] * coef(boot_b)[mediator]
+	}
+	ci <- stats::quantile(boot_vals, probs = c(0.025, 0.975), na.rm = TRUE)
+	prop_med <- if (is.na(c_total) || c_total == 0) NA_real_ else indirect / c_total
+	tibble::tibble(
+		Treat = treat,
+		Mediator = mediator,
+		Outcome = outcome,
+		N = nrow(use_df),
+		A = a,
+		B = b,
+		Indirect = indirect,
+		CI_Lower = unname(ci[1]),
+		CI_Upper = unname(ci[2]),
+		Direct = c_prime,
+		Total = c_total,
+		Prop_Mediated = prop_med,
+		Sobel_z = z_sobel,
+		Sobel_p = p_sobel
+	)
+}
+
+label_var <- function(var) {
+	dplyr::recode(
+		var,
+		trustworthiness = "Vertrauenswuerdigkeit",
+		info_quality = "Informationsqualitaet",
+		attitude_ugc = "Einstellung_UGC",
+		purchase_intent = "Kaufabsicht",
+		Instagram_Nutzung = "Instagram_Nutzung",
+		Alter = "Alter",
+		.default = var
+	)
+}
+
+rename_cols <- function(df, mapping) {
+	for (from in names(mapping)) {
+		if (from %in% names(df)) {
+			names(df)[names(df) == from] <- mapping[[from]]
+		}
+	}
+	df
+}
+
+coef_map_de <- c(
+	"Estimate" = "Schaetzung",
+	"Std. Error" = "Std_Fehler",
+	"t value" = "t_Wert",
+	"Pr(>|t|)" = "p_Wert",
+	"estimate" = "Schaetzung",
+	"std.error" = "Std_Fehler",
+	"t.value" = "t_Wert",
+	"p.value" = "p_Wert"
+)
+
+coef_map_lower <- c(
+	"Estimate" = "estimate",
+	"Std. Error" = "std.error",
+	"t value" = "statistic",
+	"Pr(>|t|)" = "p.value"
+)
+
+## Zusatzanalysen fuer added Outputs
+
+gender_group_results <- tibble::tibble()
+gender_group_desc <- tibble::tibble()
+gender_group_plot_done <- FALSE
+
+if (!is.na(gender_source)) {
+	gender_group_df <- data %>%
+		mutate(Geschlecht_group = as.character(.data[[gender_source]])) %>%
+		mutate(Geschlecht_group = ifelse(Geschlecht_group == "", NA_character_, Geschlecht_group))
+
+	gender_vars <- intersect(
+		c("trustworthiness", "info_quality", "attitude_ugc", "purchase_intent", "Instagram_Nutzung"),
+		names(gender_group_df)
+	)
+
+	if (length(gender_vars) > 0) {
+		gender_long <- gender_group_df %>%
+			select(Geschlecht_group, all_of(gender_vars)) %>%
+			pivot_longer(cols = all_of(gender_vars), names_to = "Variable", values_to = "Wert")
+
+		gender_group_desc <- gender_long %>%
+			group_by(Variable, Geschlecht_group) %>%
+			summarise(
+				n = sum(!is.na(Wert)),
+				Mittelwert = mean(Wert, na.rm = TRUE),
+				SD = stats::sd(Wert, na.rm = TRUE),
+				.groups = "drop"
+			)
+
+		write.csv(
+			gender_group_desc,
+			file.path(added_output_dir, "gender_group_descriptives.csv"),
+			row.names = FALSE
+		)
+
+		if (length(unique(na.omit(gender_long$Geschlecht_group))) >= 2) {
+			for (var in gender_vars) {
+				sub <- gender_group_df %>%
+					select(Geschlecht_group, all_of(var)) %>%
+					filter(!is.na(Geschlecht_group), !is.na(.data[[var]]))
+				groups <- sort(unique(sub$Geschlecht_group))
+				if (length(groups) < 2) {
+					next
+				}
+				if (length(groups) == 2) {
+					group_counts <- table(sub$Geschlecht_group)
+					if (min(group_counts) < 2) {
+						next
+					}
+					tt <- stats::t.test(sub[[var]] ~ sub$Geschlecht_group)
+					wil <- suppressWarnings(stats::wilcox.test(sub[[var]] ~ sub$Geschlecht_group, exact = FALSE))
+					d_val <- cohen_d(sub[[var]], sub$Geschlecht_group)
+					gender_group_results <- dplyr::bind_rows(
+						gender_group_results,
+						tibble::tibble(
+							Variable = var,
+							Test = "t_test",
+							Statistik = unname(tt$statistic),
+							df1 = unname(tt$parameter),
+							df2 = NA_real_,
+							p_Wert = tt$p.value,
+							Effekt = d_val
+						),
+						tibble::tibble(
+							Variable = var,
+							Test = "wilcox",
+							Statistik = unname(wil$statistic),
+							df1 = NA_real_,
+							df2 = NA_real_,
+							p_Wert = wil$p.value,
+							Effekt = NA_real_
+						)
+					)
+				} else {
+					aov_mod <- stats::aov(sub[[var]] ~ sub$Geschlecht_group)
+					kw <- stats::kruskal.test(sub[[var]] ~ sub$Geschlecht_group)
+					eta <- eta_sq(aov_mod)
+					anova_tbl <- summary(aov_mod)[[1]]
+					gender_group_results <- dplyr::bind_rows(
+						gender_group_results,
+						tibble::tibble(
+							Variable = var,
+							Test = "anova",
+							Statistik = anova_tbl["sub$Geschlecht_group", "F value"],
+							df1 = anova_tbl["sub$Geschlecht_group", "Df"],
+							df2 = anova_tbl["Residuals", "Df"],
+							p_Wert = anova_tbl["sub$Geschlecht_group", "Pr(>F)"],
+							Effekt = eta
+						),
+						tibble::tibble(
+							Variable = var,
+							Test = "kruskal",
+							Statistik = unname(kw$statistic),
+							df1 = unname(kw$parameter),
+							df2 = NA_real_,
+							p_Wert = kw$p.value,
+							Effekt = NA_real_
+						)
+					)
+				}
+			}
+
+			write.csv(
+				gender_group_results,
+				file.path(added_output_dir, "gender_group_tests.csv"),
+				row.names = FALSE
+			)
+
+			gender_plot <- ggplot(
+				gender_long %>% filter(!is.na(Geschlecht_group)),
+				aes(x = Geschlecht_group, y = Wert, fill = Geschlecht_group)
+			) +
+				geom_boxplot(alpha = 0.7, outlier.alpha = 0.4) +
+				facet_wrap(~ Variable, ncol = 2, scales = "free_y") +
+				plot_theme +
+				labs(x = "Geschlecht", y = "Wert") +
+				theme(legend.position = "none")
+
+			ggsave(
+				file.path(added_output_dir, "gender_group_boxplots.svg"),
+				gender_plot,
+				width = plot_width,
+				height = plot_height_tall,
+				device = plot_device
+			)
+			gender_group_plot_done <- TRUE
+		}
+	}
+}
+
+spearman_vars <- c(
+	"Vertrauenswuerdigkeit",
+	"Informationsqualitaet",
+	"Einstellung_UGC",
+	"Kaufabsicht",
+	"Alter",
+	"Instagram_Nutzung"
+)
+
+spearman_input <- data_export %>% select(any_of(spearman_vars))
+spearman_corr <- NULL
+spearman_p <- NULL
+
+if (ncol(spearman_input) >= 2) {
+	spearman_res <- pairwise_corr(spearman_input, method = "spearman")
+	spearman_corr <- spearman_res$r
+	spearman_p <- spearman_res$p
+	write.csv(spearman_corr, file.path(added_output_dir, "spearman_correlations.csv"))
+	write.csv(spearman_p, file.path(added_output_dir, "spearman_p_values.csv"))
+
+	plot_matrix_heatmap(
+		spearman_corr,
+		"spearman_correlation_heatmap.svg",
+		"Spearman-Korrelationen",
+		"%.2f",
+		scale_fill_gradient2(low = "#b2182b", mid = "#f7f7f7", high = "#2166ac", midpoint = 0),
+		"rho",
+		out_dir = added_output_dir
+	)
+	plot_matrix_heatmap(
+		spearman_p,
+		"spearman_pvalues_heatmap.svg",
+		"Spearman p-Werte",
+		"%.4f",
+		scale_fill_gradient(low = "#b2182b", high = "#f7f7f7", limits = c(0, 1)),
+		"p",
+		out_dir = added_output_dir
+	)
+}
+
+robust_df <- tibble::tibble()
+if (exists("model")) {
+	robust_coefs <- lmtest::coeftest(model, vcov = sandwich::vcovHC(model, type = "HC3"))
+	robust_df <- as.data.frame(unclass(robust_coefs)) %>%
+		tibble::rownames_to_column(var = "Praediktor") %>%
+		mutate(Praediktor = recode_predictor(Praediktor))
+	robust_df <- rename_cols(robust_df, coef_map_de)
+	write.csv(robust_df, file.path(added_output_dir, "regression_robust_se.csv"), row.names = FALSE)
+}
+
+mediation_results <- tibble::tibble()
+if (nrow(analysis_df) >= 30) {
+	med_info <- mediation_boot(analysis_df, "info_quality", "attitude_ugc", "purchase_intent")
+	med_trust <- mediation_boot(analysis_df, "trustworthiness", "attitude_ugc", "purchase_intent")
+	mediation_results <- dplyr::bind_rows(med_info, med_trust)
+	if (nrow(mediation_results) > 0) {
+		mediation_results <- mediation_results %>%
+			mutate(
+				Treat = recode_predictor(Treat),
+				Mediator = recode_predictor(Mediator),
+				Outcome = recode_predictor(Outcome)
+			)
+		write.csv(mediation_results, file.path(added_output_dir, "mediation_results.csv"), row.names = FALSE)
+	}
+}
+
+moderation_results <- tibble::tibble()
+if (all(c("D2", "Instagram_Nutzung") %in% names(data))) {
+	mod_df <- data %>%
+		select(trustworthiness, info_quality, attitude_ugc, purchase_intent, D2, Instagram_Nutzung) %>%
+		rename(Alter = D2) %>%
+		mutate(
+			attitude_c = scale(attitude_ugc, center = TRUE, scale = FALSE)[, 1],
+			age_c = scale(Alter, center = TRUE, scale = FALSE)[, 1],
+			instagram_c = scale(Instagram_Nutzung, center = TRUE, scale = FALSE)[, 1]
+		)
+
+	mod_age_df <- mod_df %>% select(purchase_intent, trustworthiness, info_quality, attitude_c, age_c) %>% drop_na()
+	if (nrow(mod_age_df) >= 30) {
+		mod_age <- lm(purchase_intent ~ attitude_c * age_c + trustworthiness + info_quality, data = mod_age_df)
+		mod_age_df_out <- as.data.frame(summary(mod_age)$coefficients) %>%
+			tibble::rownames_to_column(var = "Term") %>%
+			mutate(Modell = "UGC_x_Alter")
+		moderation_results <- dplyr::bind_rows(moderation_results, mod_age_df_out)
+	}
+
+	mod_insta_df <- mod_df %>% select(purchase_intent, trustworthiness, info_quality, attitude_c, instagram_c) %>% drop_na()
+	if (nrow(mod_insta_df) >= 30) {
+		mod_insta <- lm(purchase_intent ~ attitude_c * instagram_c + trustworthiness + info_quality, data = mod_insta_df)
+		mod_insta_df_out <- as.data.frame(summary(mod_insta)$coefficients) %>%
+			tibble::rownames_to_column(var = "Term") %>%
+			mutate(Modell = "UGC_x_Instagram")
+		moderation_results <- dplyr::bind_rows(moderation_results, mod_insta_df_out)
+	}
+
+	if (nrow(moderation_results) > 0) {
+		moderation_results <- rename_cols(moderation_results, coef_map_de)
+		write.csv(moderation_results, file.path(added_output_dir, "moderation_results.csv"), row.names = FALSE)
+	}
+}
+
+influence_df <- tibble::tibble()
+influence_summary <- tibble::tibble()
+if (exists("model") && nrow(analysis_df) >= 3) {
+	cooks <- stats::cooks.distance(model)
+	leverages <- stats::hatvalues(model)
+	std_resid <- stats::rstandard(model)
+	cutoff <- 4 / nrow(analysis_df)
+	influence_df <- tibble::tibble(
+		Row = seq_len(nrow(analysis_df)),
+		CooksD = cooks,
+		Leverage = leverages,
+		StdResid = std_resid,
+		Influential = cooks > cutoff
+	)
+	write.csv(influence_df, file.path(added_output_dir, "influence_diagnostics.csv"), row.names = FALSE)
+	influence_summary <- tibble::tibble(
+		N = nrow(analysis_df),
+		CooksD_Cutoff = cutoff,
+		Influential_Count = sum(influence_df$Influential, na.rm = TRUE)
+	)
+	write.csv(influence_summary, file.path(added_output_dir, "influence_summary.csv"), row.names = FALSE)
+
+	cooks_plot <- ggplot(influence_df, aes(x = Row, y = CooksD)) +
+		geom_col(fill = "#8dd3c7") +
+		geom_hline(yintercept = cutoff, linetype = "dashed", color = "#b2182b") +
+		plot_theme +
+		labs(x = "Fall", y = "Cook's Distance")
+
+	ggsave(
+		file.path(added_output_dir, "cooks_distance.svg"),
+		cooks_plot,
+		width = plot_width,
+		height = plot_height,
+		device = plot_device
+	)
+}
+
+missing_vars <- c(
+	"Vertrauenswuerdigkeit",
+	"Informationsqualitaet",
+	"Einstellung_UGC",
+	"Kaufabsicht",
+	"Alter",
+	"Geschlecht",
+	"Instagram_Nutzung"
+)
+
+missing_df <- data_export %>% select(any_of(missing_vars))
+
+missing_summary <- tibble::tibble(
+	Variable = names(missing_df),
+	Missing_n = vapply(missing_df, function(x) sum(is.na(x)), integer(1)),
+	Missing_pct = vapply(missing_df, function(x) mean(is.na(x)) * 100, numeric(1))
+)
+
+write.csv(missing_summary, file.path(added_output_dir, "missingness_summary.csv"), row.names = FALSE)
+
+missing_tests <- tibble::tibble()
+if ("Kaufabsicht" %in% names(data_export)) {
+	miss_flag <- is.na(data_export$Kaufabsicht)
+	if ("Alter" %in% names(data_export)) {
+		sub <- data_export %>%
+			select(Alter) %>%
+			mutate(Missing = miss_flag) %>%
+			filter(!is.na(Alter))
+		if (length(unique(sub$Missing)) == 2) {
+			group_counts <- table(sub$Missing)
+			if (min(group_counts) >= 2) {
+				res <- stats::t.test(Alter ~ Missing, data = sub)
+				missing_tests <- dplyr::bind_rows(
+					missing_tests,
+					tibble::tibble(
+						Test = "t_test",
+						Variable = "Alter",
+						Statistik = unname(res$statistic),
+						df1 = unname(res$parameter),
+						df2 = NA_real_,
+						p_Wert = res$p.value
+					)
+				)
+			}
+		}
+	}
+	if ("Geschlecht" %in% names(data_export)) {
+		tbl <- table(data_export$Geschlecht, miss_flag, useNA = "no")
+		if (all(dim(tbl) >= 2)) {
+			chi <- suppressWarnings(stats::chisq.test(tbl))
+			missing_tests <- dplyr::bind_rows(
+				missing_tests,
+				tibble::tibble(
+					Test = "chisq",
+					Variable = "Geschlecht",
+					Statistik = unname(chi$statistic),
+					df1 = unname(chi$parameter),
+					df2 = NA_real_,
+					p_Wert = chi$p.value
+				)
+			)
+		}
+	}
+}
+
+if (nrow(missing_tests) > 0) {
+	write.csv(missing_tests, file.path(added_output_dir, "missingness_tests.csv"), row.names = FALSE)
+}
+
+imputed_regression <- tibble::tibble()
+imp_vars <- c("trustworthiness", "info_quality", "attitude_ugc", "purchase_intent")
+imp_df <- data %>% select(any_of(imp_vars))
+
+if (ncol(imp_df) == 4) {
+	imp_df_imputed <- imp_df
+	for (col in names(imp_df_imputed)) {
+		mean_val <- mean(imp_df_imputed[[col]], na.rm = TRUE)
+		imp_df_imputed[[col]][is.na(imp_df_imputed[[col]])] <- mean_val
+	}
+	imp_model <- lm(purchase_intent ~ trustworthiness + info_quality + attitude_ugc, data = imp_df_imputed)
+	imputed_regression <- as.data.frame(summary(imp_model)$coefficients) %>%
+		tibble::rownames_to_column(var = "term")
+	imputed_regression <- rename_cols(imputed_regression, coef_map_lower)
+	write.csv(imputed_regression, file.path(added_output_dir, "regression_imputed_mean.csv"), row.names = FALSE)
+}
+
+notes_lines <- c(
+	"# Added Analysen (added Outputs)",
+	"",
+	"Diese Datei erklaert die zusaetzlichen Auswertungen im Ordner 'added Outputs'.",
+	"",
+	"## 1) Geschlecht Gruppenvergleich",
+	"Zweck: Testet, ob sich Mittelwerte der Skalen zwischen Geschlechtsgruppen unterscheiden.",
+	if (nrow(gender_group_results) > 0) {
+		gender_purchase <- gender_group_results %>%
+			filter(Variable == "purchase_intent", Test %in% c("t_test", "anova")) %>%
+			slice(1)
+		if (nrow(gender_purchase) == 1) {
+			paste0(
+				"Ergebnis Kaufabsicht: ",
+				gender_purchase$Test,
+				", p = ",
+				fmt_p(gender_purchase$p_Wert),
+				", Effekt = ",
+				fmt_num(gender_purchase$Effekt)
+			)
+		} else {
+			"Ergebnis Kaufabsicht: nicht berechnet."
+		}
+	} else {
+		"Ergebnis Kaufabsicht: nicht berechnet (zu wenige Gruppen)."
+	},
+	"Dateien: gender_group_descriptives.csv, gender_group_tests.csv, gender_group_boxplots.svg",
+	"",
+	"## 2) Robuste Korrelationen (Spearman)",
+	"Zweck: Pruft Zusammenhaenge ohne Normalverteilungsannahme.",
+	if (!is.null(spearman_corr)) {
+		paste0(
+			"Kaufabsicht x Einstellung_UGC: rho = ",
+			fmt_num(get_corr_value(spearman_corr, "Kaufabsicht", "Einstellung_UGC")),
+			", p = ",
+			fmt_p(get_corr_value(spearman_p, "Kaufabsicht", "Einstellung_UGC")),
+			"; Kaufabsicht x Informationsqualitaet: rho = ",
+			fmt_num(get_corr_value(spearman_corr, "Kaufabsicht", "Informationsqualitaet")),
+			", p = ",
+			fmt_p(get_corr_value(spearman_p, "Kaufabsicht", "Informationsqualitaet")),
+			"; Alter x Instagram_Nutzung: rho = ",
+			fmt_num(get_corr_value(spearman_corr, "Alter", "Instagram_Nutzung")),
+			", p = ",
+			fmt_p(get_corr_value(spearman_p, "Alter", "Instagram_Nutzung"))
+		)
+	} else {
+		"Spearman-Korrelationen nicht berechnet (zu wenige Variablen)."
+	},
+	"Dateien: spearman_correlations.csv, spearman_p_values.csv, spearman_correlation_heatmap.svg, spearman_pvalues_heatmap.svg",
+	"",
+	"## 3) Robuste Regression (HC3 Standardfehler)",
+	"Zweck: Prueft, ob die Regressionsergebnisse bei robusten Standardfehlern stabil bleiben.",
+	if (nrow(robust_df) > 0 && "p_Wert" %in% names(robust_df)) {
+		rob_att <- robust_df %>% filter(Praediktor == "Einstellung_UGC") %>% slice(1)
+		rob_info <- robust_df %>% filter(Praediktor == "Informationsqualitaet") %>% slice(1)
+		rob_trust <- robust_df %>% filter(Praediktor == "Vertrauenswuerdigkeit") %>% slice(1)
+		paste0(
+			"p-Werte (robust): Einstellung_UGC = ", fmt_p(rob_att$p_Wert),
+			", Informationsqualitaet = ", fmt_p(rob_info$p_Wert),
+			", Vertrauenswuerdigkeit = ", fmt_p(rob_trust$p_Wert)
+		)
+	} else {
+		"Robuste Regression nicht berechnet."
+	},
+	"Datei: regression_robust_se.csv",
+	"",
+	"## 4) Mediation (Bootstrap)",
+	"Zweck: Testet indirekte Effekte ueber Einstellung_UGC.",
+	if (nrow(mediation_results) > 0) {
+		med_info <- mediation_results %>% filter(Treat == "Informationsqualitaet") %>% slice(1)
+		med_trust <- mediation_results %>% filter(Treat == "Vertrauenswuerdigkeit") %>% slice(1)
+		paste0(
+			"Indirekt Informationsqualitaet -> Einstellung_UGC -> Kaufabsicht: ",
+			fmt_num(med_info$Indirect),
+			" (CI ", fmt_num(med_info$CI_Lower), ", ", fmt_num(med_info$CI_Upper), "). ",
+			"Indirekt Vertrauenswuerdigkeit: ",
+			fmt_num(med_trust$Indirect),
+			" (CI ", fmt_num(med_trust$CI_Lower), ", ", fmt_num(med_trust$CI_Upper), ")."
+		)
+	} else {
+		"Mediation nicht berechnet (zu wenige vollstaendige Faelle)."
+	},
+	"Datei: mediation_results.csv",
+	"",
+	"## 5) Moderation (Interaktionen)",
+	"Zweck: Prueft, ob der Zusammenhang Einstellung_UGC -> Kaufabsicht je nach Alter/Instagram unterschiedlich ist.",
+	if (nrow(moderation_results) > 0 && "p_Wert" %in% names(moderation_results)) {
+		mod_age <- moderation_results %>% filter(Modell == "UGC_x_Alter", Term == "attitude_c:age_c") %>% slice(1)
+		mod_insta <- moderation_results %>% filter(Modell == "UGC_x_Instagram", Term == "attitude_c:instagram_c") %>% slice(1)
+		paste0(
+			"Interaktion UGC x Alter: p = ", fmt_p(mod_age$p_Wert),
+			"; Interaktion UGC x Instagram: p = ", fmt_p(mod_insta$p_Wert)
+		)
+	} else {
+		"Moderation nicht berechnet (zu wenige Faelle)."
+	},
+	"Datei: moderation_results.csv",
+	"",
+	"## 6) Einflussdiagnostik",
+	"Zweck: Identifiziert einflussreiche Faelle in der Regression.",
+	if (nrow(influence_summary) > 0) {
+		paste0(
+			"Influential Count (Cook's D > 4/n): ",
+			influence_summary$Influential_Count
+		)
+	} else {
+		"Einflussdiagnostik nicht berechnet."
+	},
+	"Dateien: influence_diagnostics.csv, influence_summary.csv, cooks_distance.svg",
+	"",
+	"## 7) Missing Data + Imputation",
+	"Zweck: Beschreibt fehlende Werte und zeigt eine Imputations-Sensitivitaet.",
+	if (nrow(missing_summary) > 0) {
+		miss_pi <- missing_summary %>% filter(Variable == "Kaufabsicht") %>% slice(1)
+		paste0(
+			"Fehlende Kaufabsicht: ",
+			fmt_num(miss_pi$Missing_pct, 1),
+			"% (",
+			miss_pi$Missing_n,
+			" Faelle)."
+		)
+	} else {
+		"Missing-Data-Uebersicht nicht berechnet."
+	},
+	if (nrow(imputed_regression) > 0 && "p.value" %in% names(imputed_regression)) {
+		imp_info <- imputed_regression %>% filter(term == "info_quality") %>% slice(1)
+		imp_att <- imputed_regression %>% filter(term == "attitude_ugc") %>% slice(1)
+		imp_trust <- imputed_regression %>% filter(term == "trustworthiness") %>% slice(1)
+		paste0(
+			"Imputation (Mittelwert) p-Werte: Einstellung_UGC = ",
+			fmt_p(imp_att$p.value),
+			", Informationsqualitaet = ",
+			fmt_p(imp_info$p.value),
+			", Vertrauenswuerdigkeit = ",
+			fmt_p(imp_trust$p.value)
+		)
+	} else {
+		"Imputation nicht berechnet."
+	},
+	"Dateien: missingness_summary.csv, missingness_tests.csv (falls vorhanden), regression_imputed_mean.csv",
+	"",
+	"## Hinweise zur Interpretation",
+	"- Signifikante p-Werte (< 0.05) deuten auf statistische Unterschiede/Zusammenhaenge hin.",
+	"- Effekte sollten immer zusammen mit Effektstaerken und inhaltlichem Kontext bewertet werden.",
+	"- Interaktionen sind nur bedeutsam, wenn der Interaktionsterm signifikant ist.",
+	"- Mittelwert-Imputation ist nur eine Sensitivitaetsanalyse und ersetzt keine saubere Missing-Data-Diagnose."
+)
+
+writeLines(notes_lines, file.path(added_output_dir, "erklaerung_added_outputs.md"))
 
 png_files <- list.files(output_dir, pattern = "\\.png$", full.names = TRUE)
 if (length(png_files) > 0) {

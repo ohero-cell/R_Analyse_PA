@@ -1,0 +1,8 @@
+{
+  "cSpell.language": "de-DE,en",
+  "cSpell.allowCompoundWords": true,
+  "ltex.language": "de-DE",
+  "ltex.disabledRules": {
+    "en-US": ["MORFOLOGIK_RULE_EN_US"]
+  }
+}

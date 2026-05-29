@@ -21,7 +21,7 @@ Koeffizienten (standardisiert)
 Interpretation: Ein positiver Koeffizient bedeutet, dass hoehere Werte der jeweiligen Skala
 mit hoeherer Kaufabsicht einhergehen. p-Werte < 0.05 gelten als statistisch signifikant.
 
-Zusatzanalysen (Tasks 1-11)
+Zusatzanalysen (Tasks 1-13)
 1-3 Korrelationen Alter
 # A tibble: 3 × 4
   Analyse                       n       r p_Wert
@@ -29,8 +29,14 @@ Zusatzanalysen (Tasks 1-11)
 1 Alter x Einstellung_UGC     134  0.0596 0.494 
 2 Alter x Kaufabsicht         133  0.0763 0.383 
 3 Alter x Instagram_Nutzung   134 -0.195  0.0243
+4-5 Korrelationen Geschlecht
+# A tibble: 2 × 4
+  Analyse                            n      r p_Wert
+  <chr>                          <int>  <dbl>  <dbl>
+1 Geschlecht x Kaufabsicht         133 -0.177 0.0418
+2 Geschlecht x Instagram_Nutzung   134 -0.110 0.208 
 
-4 Korrelationsmatrix (erweitert)
+6 Korrelationsmatrix (erweitert)
                       Vertrauenswuerdigkeit Informationsqualitaet
 Vertrauenswuerdigkeit                 1.000                 0.496
 Informationsqualitaet                 0.496                 1.000
@@ -61,7 +67,7 @@ Kaufabsicht                    0.0000      0.0000 1.0000            1.0000
 Alter                          0.4941      0.3827 0.0000            0.2184
 Instagram_Nutzung              0.9016      0.4897 0.0243            0.0000
 
-5-6 Multikollinearitaet (Toleranzwerte)
+7-8 Multikollinearitaet (Toleranzwerte)
 # A tibble: 3 × 4
   Praediktor               R2 Toleranz Problematisch
   <chr>                 <dbl>    <dbl> <lgl>        
@@ -70,19 +76,19 @@ Instagram_Nutzung              0.9016      0.4897 0.0243            0.0000
 3 Einstellung_UGC       0.173    0.827 FALSE        
 Kriterium: Toleranz < 0.01 = problematisch.
 
-7 Normalverteilung der Residuen (Shapiro-Wilk)
+9 Normalverteilung der Residuen (Shapiro-Wilk)
 W = 0.960, p = 0.0006
 
-8 Homoskedastizitaet (Breusch-Pagan)
+10 Homoskedastizitaet (Breusch-Pagan)
 BP = 7.34, df = 3, p = 0.0619
 
-9 Linearitaet (Residuen vs. Fitted)
+11 Linearitaet (Residuen vs. Fitted)
 Plot gespeichert: residuals_vs_fitted.svg
 
-10 Unabhaengigkeit der Residuen (Durbin-Watson)
+12 Unabhaengigkeit der Residuen (Durbin-Watson)
 DW = 1.706, p = 0.0430
 
-11 Ausreisser (Mahalanobis-Distanz)
+13 Ausreisser (Mahalanobis-Distanz)
 Cutoff (p = 0.001, df = 3) = 16.266; Ausreisser = 0
 
 Kurzfazit (Wichtigste Ergebnisse)
@@ -91,6 +97,8 @@ Signifikante Praediktoren: Informationsqualitaet, Einstellung_UGC. Nicht signifi
 Alter x Einstellung_UGC: r = 0.060, p = 0.4941 (n = 134)
 Alter x Kaufabsicht: r = 0.076, p = 0.3827 (n = 133)
 Alter x Instagram_Nutzung: r = -0.195, p = 0.0243 (n = 134)
+Geschlecht x Kaufabsicht: r = -0.177, p = 0.0418 (n = 133)
+Geschlecht x Instagram_Nutzung: r = -0.110, p = 0.2078 (n = 134)
 Normalitaet Residuen (Shapiro): p = 0.0006 (Hinweis auf Abweichung von Normalverteilung).
 Homoskedastizitaet (Breusch-Pagan): p = 0.0619 (kein signifikanter Hinweis).
 Unabhaengigkeit Residuen (Durbin-Watson): p = 0.0430 (Hinweis auf Autokorrelation).
@@ -102,21 +110,23 @@ Alter zeigt keinen signifikanten Zusammenhang mit Einstellung_UGC (r = 0.060, p 
 Instagram-Nutzung ist negativ mit Alter korreliert (r = -0.195, p = 0.0243): juengere nutzen Instagram staerker.
 Multikollinearitaet und Ausreisser sind unproblematisch; die Residuen zeigen jedoch Hinweise auf Abweichung von Normalverteilung und moegliche Autokorrelation.
 
-Dokumentation Tasks 1-11 (Kurzbeschreibung)
+Dokumentation Tasks 1-13 (Kurzbeschreibung)
 1 Alter x Einstellung: Zusammenhang Alter und Einstellung_UGC.
 2 Alter x Kaufabsicht: Zusammenhang Alter und Kaufabsicht.
 3 Alter x Instagram: Zusammenhang Alter und Instagram-Nutzung.
-4 Korrelationsmatrix: Uebersicht aller paarweisen Zusammenhaenge.
-5 Multikollinearitaet: Regression jedes Praediktors auf die anderen.
-6 Toleranz (1 - R2): Indikator fuer problematische Ueberschneidungen.
-7 Shapiro-Wilk: Normalverteilung der Residuen.
-8 Homoskedastizitaet: konstante Residuenstreuung.
-9 Linearitaet: Residuen vs. Fitted Plot.
-10 Durbin-Watson: Unabhaengigkeit der Residuen.
-11 Mahalanobis: multivariate Ausreisser.
+4 Geschlecht x Kaufabsicht: Zusammenhang Geschlecht und Kaufabsicht.
+5 Geschlecht x Instagram: Zusammenhang Geschlecht und Instagram-Nutzung.
+6 Korrelationsmatrix: Uebersicht aller paarweisen Zusammenhaenge.
+7 Multikollinearitaet: Regression jedes Praediktors auf die anderen.
+8 Toleranz (1 - R2): Indikator fuer problematische Ueberschneidungen.
+9 Shapiro-Wilk: Normalverteilung der Residuen.
+10 Homoskedastizitaet: konstante Residuenstreuung.
+11 Linearitaet: Residuen vs. Fitted Plot.
+12 Durbin-Watson: Unabhaengigkeit der Residuen.
+13 Mahalanobis: multivariate Ausreisser.
 
 Visualisierungen (Dateien)
 correlation_heatmap.svg; correlation_pvalues_heatmap.svg; correlation_extended_heatmap.svg (falls vorhanden); correlation_extended_pvalues_heatmap.svg (falls vorhanden)
 descriptives_means_sd.svg; reliability_alpha.svg; regression_coefficients_standardized.svg
-age_correlations.svg; multicollinearity_tolerance.svg; residuals_vs_fitted.svg; mahalanobis_distances.svg
+age_correlations.svg; gender_correlations.svg; multicollinearity_tolerance.svg; residuals_vs_fitted.svg; mahalanobis_distances.svg
 sample_sizes.svg; scale_means_by_gender.svg (falls vorhanden)
