@@ -54,6 +54,7 @@ if (file.exists(file.path(script_dir, "analyse.R"))) {
 input_path <- file.path(root_dir, "data", "12.05.2026.xlsx")
 output_dir <- file.path(root_dir, "Output")
 added_output_dir <- file.path(root_dir, "added Outputs")
+second_output_dir <- file.path(root_dir, "second_Output")
 
 if (!file.exists(input_path)) {
 	stop("Eingabedatei nicht gefunden: ", input_path)
@@ -65,6 +66,10 @@ if (!dir.exists(output_dir)) {
 
 if (!dir.exists(added_output_dir)) {
 	dir.create(added_output_dir, recursive = TRUE)
+}
+
+if (!dir.exists(second_output_dir)) {
+	dir.create(second_output_dir, recursive = TRUE)
 }
 
 raw <- readxl::read_excel(input_path)
@@ -1598,6 +1603,179 @@ notes_lines <- c(
 )
 
 writeLines(notes_lines, file.path(added_output_dir, "erklaerung_added_outputs.md"))
+
+second_output_gender_label <- function(x) {
+	dplyr::case_when(
+		x == 1 ~ "Frauen",
+		x == 2 ~ "Maenner",
+		is.na(x) ~ NA_character_,
+		TRUE ~ paste0("Code ", x)
+	)
+}
+
+vif_table <- tolerance_table %>%
+	mutate(
+		VIF = ifelse(Toleranz > 0, 1 / Toleranz, NA_real_),
+		Bedenklich_ab_2 = VIF >= 2
+	) %>%
+	select(Praediktor, R2, Toleranz, VIF, Bedenklich_ab_2)
+
+model_f2 <- model_summary$r.squared / (1 - model_summary$r.squared)
+model_f <- sqrt(model_f2)
+
+effect_size_table <- tibble::tibble(
+	Praediktor = "Gesamtmodell",
+	R2 = model_summary$r.squared,
+	Toleranz = NA_real_,
+	VIF = NA_real_,
+	Bedenklich_ab_2 = NA,
+	Cohens_f2 = model_f2,
+	Cohens_f = model_f
+)
+
+vif_effect_table <- vif_table %>%
+	mutate(Cohens_f2 = NA_real_, Cohens_f = NA_real_) %>%
+	bind_rows(effect_size_table) %>%
+	select(Praediktor, R2, Toleranz, VIF, Bedenklich_ab_2, Cohens_f2, Cohens_f)
+
+write.csv(vif_effect_table, file.path(second_output_dir, "vif_und_effektstaerke.csv"), row.names = FALSE)
+
+gender_counts <- data %>%
+	filter(!is.na(D1)) %>%
+	mutate(Geschlecht_label = second_output_gender_label(D1)) %>%
+	count(Geschlecht_label, name = "Anzahl") %>%
+	mutate(Prozent = Anzahl / sum(Anzahl) * 100) %>%
+	mutate(
+		Geschlecht_label = factor(Geschlecht_label, levels = c("Frauen", "Maenner")),
+		Label = sprintf("%d\n(%.1f%%)", Anzahl, Prozent)
+	)
+
+if (nrow(gender_counts) > 0) {
+	gender_plot <- ggplot(gender_counts, aes(x = Geschlecht_label, y = Anzahl, fill = Geschlecht_label)) +
+		geom_col(width = 0.65) +
+		geom_text(aes(label = Label), vjust = -0.35, size = 3.5) +
+		scale_fill_manual(values = c("Frauen" = "#e41a1c", "Maenner" = "#377eb8")) +
+		plot_theme +
+		labs(x = NULL, y = "Anzahl", title = "Geschlechterverteilung") +
+		theme(legend.position = "none", axis.text.x = element_text(size = 10))
+
+	ggsave(
+		file.path(second_output_dir, "geschlechterverteilung.svg"),
+		gender_plot,
+		width = plot_width,
+		height = plot_height,
+		device = plot_device
+	)
+}
+
+age_values <- data %>%
+	filter(!is.na(D2)) %>%
+	transmute(Alter = D2)
+
+if (nrow(age_values) > 0) {
+	age_plot <- ggplot(age_values, aes(x = Alter)) +
+		geom_histogram(binwidth = 5, fill = "#80b1d3", color = "white", boundary = 0) +
+		geom_vline(xintercept = mean(age_values$Alter, na.rm = TRUE), linetype = "dashed", color = "#b2182b") +
+		plot_theme +
+		labs(x = "Alter", y = "Anzahl", title = "Altersverteilung") +
+		scale_x_continuous(breaks = scales::pretty_breaks(n = 8))
+
+	ggsave(
+		file.path(second_output_dir, "altersverteilung.svg"),
+		age_plot,
+		width = plot_width,
+		height = plot_height,
+		device = plot_device
+	)
+}
+
+means_plot_df <- desc_summary %>%
+	mutate(Skala = factor(Skala, levels = c("Vertrauenswuerdigkeit", "Informationsqualitaet", "Einstellung_UGC", "Kaufabsicht")))
+
+means_plot <- ggplot(means_plot_df, aes(x = Skala, y = Mittelwert)) +
+	geom_col(fill = "#2c7fb8", width = 0.7) +
+	geom_errorbar(aes(ymin = Mittelwert - SD, ymax = Mittelwert + SD), width = 0.2) +
+	plot_theme +
+	labs(x = NULL, y = "Mittelwert (SD)", title = "Mittelwerte der Konstrukte") +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+	file.path(second_output_dir, "mittelwerte_konstrukte.svg"),
+	means_plot,
+	width = plot_width,
+	height = plot_height,
+	device = plot_device
+)
+
+purchase_gender_summary <- data %>%
+	filter(!is.na(D1), !is.na(purchase_intent)) %>%
+	mutate(Geschlecht = second_output_gender_label(D1)) %>%
+	group_by(Geschlecht) %>%
+	summarise(
+		Anzahl = n(),
+		Mittelwert = mean(purchase_intent, na.rm = TRUE),
+		SD = sd(purchase_intent, na.rm = TRUE),
+		.groups = "drop"
+	) %>%
+	mutate(
+		Geschlecht = factor(Geschlecht, levels = c("Frauen", "Maenner")),
+		Label = sprintf("M = %.2f\nSD = %.2f", Mittelwert, SD)
+	)
+
+if (nrow(purchase_gender_summary) > 0) {
+	purchase_gender_plot <- ggplot(purchase_gender_summary, aes(x = Geschlecht, y = Mittelwert, fill = Geschlecht)) +
+		geom_col(width = 0.65) +
+		geom_errorbar(aes(ymin = Mittelwert - SD, ymax = Mittelwert + SD), width = 0.18) +
+		geom_text(aes(label = Label), vjust = -0.45, size = 3.5) +
+		scale_fill_manual(values = c("Frauen" = "#fb9a99", "Maenner" = "#a6cee3")) +
+		coord_cartesian(ylim = c(0, 5)) +
+		plot_theme +
+		labs(
+			x = NULL,
+			y = "Kaufabsicht",
+			title = "Kaufabsicht nach Geschlecht",
+			subtitle = "Die deskriptiven Ergebnisse zeigen, dass die weiblichen Befragten mit M = 2,64 und SD = 0,89 im Durchschnitt eine leicht hoehere Kaufabsicht aufwiesen als die maennlichen Befragten mit M = 2,27 und SD = 0,94."
+		) +
+		theme(legend.position = "none", axis.text.x = element_text(size = 10))
+
+	ggsave(
+		file.path(second_output_dir, "kaufabsicht_nach_geschlecht.svg"),
+		purchase_gender_plot,
+		width = plot_width,
+		height = plot_height_tall,
+		device = plot_device
+	)
+}
+
+boxplot_df <- analysis_df_de %>%
+	pivot_longer(
+		cols = c(Vertrauenswuerdigkeit, Informationsqualitaet, Einstellung_UGC, Kaufabsicht),
+		names_to = "Variable",
+		values_to = "Wert"
+	) %>%
+	mutate(
+		Variable = factor(
+			Variable,
+			levels = c("Vertrauenswuerdigkeit", "Informationsqualitaet", "Einstellung_UGC", "Kaufabsicht")
+		)
+	)
+
+boxplot_plot <- ggplot(boxplot_df, aes(x = Variable, y = Wert, fill = Variable)) +
+	geom_boxplot(outlier.shape = NA, width = 0.65) +
+	coord_cartesian(ylim = c(1, 5)) +
+	scale_y_continuous(breaks = 1:5) +
+	scale_fill_manual(values = c("Vertrauenswuerdigkeit" = "#8dd3c7", "Informationsqualitaet" = "#ffffb3", "Einstellung_UGC" = "#bebada", "Kaufabsicht" = "#fb8072")) +
+	plot_theme +
+	labs(x = NULL, y = "Skala 1-5", title = "Boxplots der Skalen") +
+	theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+	file.path(second_output_dir, "boxplots_skalen.svg"),
+	boxplot_plot,
+	width = plot_width,
+	height = 3.2,
+	device = plot_device
+)
 
 png_files <- list.files(output_dir, pattern = "\\.png$", full.names = TRUE)
 if (length(png_files) > 0) {
