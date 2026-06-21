@@ -1,0 +1,2 @@
+Cohen's f2 = 0.467
+Cohen's f = 0.683
